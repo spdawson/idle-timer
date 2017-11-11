@@ -22,31 +22,34 @@ let now = () => +new Date();
 let passive_supported = function() {
     /* Test via a getter in the options object to see if the passive
      * property is accessed */
-    let supportsPassive = false;
+    let rv = false;
     try {
-        const Popts = Object.defineProperty({}, 'passive', {
+        const opts = Object.defineProperty({}, 'passive', {
             get: function() {
-                supportsPassive = true;
+                rv = true;
             }
         });
-        window.addEventListener('test', null, Popts);
-    } catch (e) {}
-    return supportsPassive;
+        window.addEventListener('test', null, opts);
+        console.log('idle-timer: passive event listeners supported');
+    } catch (e) {
+        console.warn('idle-timer: passive event listeners not supported');
+    }
+    return rv;
 };
 
 /** Idle timer */
 class IdleTimer {
     /** Constructor */
     constructor(opts, element = document) {
-        console.log('timer: constructor');
+        console.log('idle-timer: constructor');
         if ('number' === typeof opts) {
             opts = { timeout: opts };
         }
 
         /* Assemble options */
         const default_opts = {
-            idle: false, /* Is user initially idle? */
-            timeout: 30000, /* duration (ms) before user considered idle */
+            idle: false, /* Is the timer initially idle? */
+            timeout: 30000, /* Duration (ms) before user considered idle */
             events: [
                 'mousemove',
                 'keydown',
@@ -54,28 +57,23 @@ class IdleTimer {
                 'DOMMouseScroll',
                 'mousewheel',
                 'mousedown'
-            ] /* Active events */
+            ] /* Array of monitored events */
         };
         opts = Object.assign(default_opts, opts);
 
         /* Initialise member variables */
-        this.element = element; /* The element to which we are attached */
-        this.events = opts.events; /* The array of monitored events */
-        this.olddate = now(); /* The last time state changed */
-        this.lastActive = this.olddate; /* The last time timer was active */
-        this.idle = opts.idle; /* Current state */
-        this.idleBackup = opts.idle; /* Backup of idle parameter, which will be modified */
+        this.element = element; /* The element to be monitored for activity */
+        this.events = opts.events; /* Array of monitored events */
+        this.initially_idle = opts.idle; /* Is the timer initially idle? */
         this.timeout = opts.timeout; /* The interval to change state */
-        this.remaining = null; /* Remaining time until state changes */
         this.timerSyncId = opts.timerSyncId; /* localStorage key to use for syncing this timer across browser tabs/windows */
-        this.tId = null; /* setTimeout handle */
+        this.timeout_id = null; /* setTimeout handle */
         this.pageX = null; /* Cached mouse event coordinate */
         this.pageY = null; /* Cached mouse event coordinate */
 
         this.__installHandlers();
-        if (!this.isIdle()) {
-            this.__start();
-        }
+
+        this.reset();
     }
 
     /**
@@ -83,7 +81,7 @@ class IdleTimer {
      * and cancels any pending timeouts
      */
     destroy() {
-        console.log('timer: destroy');
+        console.log('idle-timer: destroy');
         /* Clear any pending timeouts */
         this.__clear();
 
@@ -94,19 +92,13 @@ class IdleTimer {
 
     /** Install event handlers */
     __installHandlers() {
-        // console.log('timer: install handlers');
-        /* Is the passive property supported? */
-        const supportsPassive = passive_supported();
-        if (supportsPassive) {
-            console.log('timer: supports passive event listeners');
-        }
-
+        // console.log('idle-timer: install handlers');
         const handler = (e) => { this.__handleEvent(e) }
         this.events.forEach((item) => {
             this.element.addEventListener(
                 item,
                 handler,
-                supportsPassive ? { passive: true } : false
+                passive_supported() ? { passive: true } : false
             )
         });
 
@@ -119,7 +111,7 @@ class IdleTimer {
 
     /* Uninstall event handlers */
     __uninstallHandlers() {
-        // console.log('timer: uninstall handlers');
+        // console.log('idle-timer: uninstall handlers');
         const handler = (e) => { this.__handleEvent(e) }
         this.events.forEach((item) => {
             this.element.removeEventListener(item, handler);
@@ -133,17 +125,19 @@ class IdleTimer {
     }
 
     /** Toggles the idle state and fires an appropriate event */
-    __toggleIdleState(event = null) {
-        // console.log('timer: toggle idle state');
+    __toggleIdle(event = null) {
+        // console.log('idle-timer: toggle idle state');
         /* Toggle state */
         this.idle = !this.isIdle();
 
         /* Store toggle state timestamp */
-        this.olddate = now();
+        this.last_toggled_at = now();
 
         /* Dispatch a custom event, with state */
+        const event_name =
+              'idle-timer:' + (this.isIdle() ? 'idle' : 'active');
         const custom_event =
-              new CustomEvent(this.isIdle() ? 'idle' : 'active',
+              new CustomEvent(event_name,
                               {
                                   detail: {
                                       timer: Object.assign({}, this),
@@ -155,7 +149,7 @@ class IdleTimer {
 
     /** Handle an event indicating that the user isn't idle */
     __handleEvent(event) {
-        // console.log('timer: handle event');
+        // console.log('idle-timer: handle event');
         if (this.__isPaused()) {
             /* Ignore events for now */
             return;
@@ -190,17 +184,17 @@ class IdleTimer {
 
         /* If the idle timer is enabled, flip */
         if (this.isIdle()) {
-            this.__toggleIdleState(event);
+            this.__toggleIdle(event);
         }
 
         /* Store when user was last active */
-        this.lastActive = now();
+        this.last_activity_at = now();
 
         /* Update mouse coordinates */
         this.pageX = event.pageX;
         this.pageY = event.pageY;
 
-        /* Sync lastActive across browser tabs/windows */
+        /* Sync last activity timestamp across browser tabs/windows */
         if ('storage' !== event.type && this.timerSyncId) {
             if ('undefined' !== typeof localStorage) {
                 localStorage.setItem(this.timerSyncId,
@@ -213,30 +207,33 @@ class IdleTimer {
     }
 
     __start(duration = null) {
-        // console.log('timer: start');
+        // console.log('idle-timer: start');
         if (null === duration) {
             duration = this.timeout;
         }
-        this.tId = setTimeout(
-            () => { this.__toggleIdleState(null) },
+        this.timeout_id = setTimeout(
+            () => { this.__toggleIdle(null) },
             duration
         );
         return this;
     }
 
     __clear() {
-        // console.log('timer: clear');
-        clearTimeout(this.tId);
+        // console.log('idle-timer: clear');
+        if (this.timeout_id) {
+            clearTimeout(this.timeout_id);
+            this.timeout_id = null;
+        }
         return this;
     }
 
     /** Restore initial settings and restart timer */
     reset() {
-        console.log('timer: reset');
+        console.log('idle-timer: reset');
+
         /* Reset settings */
-        this.idle = this.idleBackup;
-        this.olddate = now();
-        this.lastActive = this.olddate;
+        this.idle = this.initially_idle;
+        this.last_activity_at = this.last_toggled_at = now();
         this.remaining = null;
 
         /* Reset timers */
@@ -250,7 +247,7 @@ class IdleTimer {
 
     /** Pause timer, and cache remaining time */
     pause() {
-        console.log('timer: pause');
+        console.log('idle-timer: pause');
         if (!this.__isPaused()) {
             /* Calculate and cache remaining time */
             this.remaining = this.timeout - this.getElapsedTime();
@@ -264,14 +261,14 @@ class IdleTimer {
 
     /** Resume timer with cached remaining time */
     resume() {
-        console.log('timer: resume');
+        console.log('idle-timer: resume');
         if (this.__isPaused()) {
             /* Start timer */
             if (!this.isIdle()) {
                 this.__start(this.remaining);
             }
 
-            /* Clear remaining */
+            /* Clear cached remaining time */
             this.remaining = null;
         }
 
@@ -285,12 +282,12 @@ class IdleTimer {
     /** Get the time until becoming idle */
     getRemainingTime() {
         if (this.isIdle()) {
-            /* No time remaining */
+            /* Already idle: no time remaining */
             return 0;
         }
 
         if (this.__isPaused()) {
-            /* Get the cached remaining time */
+            /* Use the cached remaining time */
             return this.remaining;
         }
 
@@ -299,11 +296,11 @@ class IdleTimer {
     }
 
     getElapsedTime() {
-        return now() - this.olddate;
+        return now() - this.last_toggled_at;
     }
 
     getLastActiveTime() {
-        return this.lastActive;
+        return this.last_activity_at;
     }
 
     isIdle() {
