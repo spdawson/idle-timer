@@ -9,25 +9,11 @@
 
 /** N.B. Public API in use:
  *
- * constructor, with element and following options: timeout, timerSyncId
+ * - constructor, with element and following options: timeout, timerSyncId
  * - 'destroy' method
  * - 'reset' method
  * - 'idle' event
  */
-
-/*
-  mousewheel (deprecated) -> IE6.0, Chrome, Opera, Safari
-  DOMMouseScroll (deprecated) -> Firefox 1.0
-  wheel (standard) -> Chrome 31, Firefox 17, IE9, Firefox Mobile 17.0
-
-  // No need to use, use DOMMouseScroll
-  MozMousePixelScroll -> Firefox 3.5, Firefox Mobile 1.0
-
-  // Events
-  WheelEvent -> see wheel
-  MouseWheelEvent -> see mousewheel
-  MouseScrollEvent -> Firefox 3.5, Firefox Mobile 1.0
-*/
 
 /* Get current timestamp */
 let now = () => +new Date();
