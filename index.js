@@ -2,7 +2,7 @@
 
 /** N.B. Public API in use:
  *
- * - constructor, with element and following options: timeout, timerSyncId
+ * - constructor, with element and following options: timeout, storage_key
  * - 'destroy' method
  * - 'reset' method
  * - 'idle' event
@@ -13,16 +13,16 @@ let now = () => +new Date();
 
 /* Is the passive property supported? */
 let passive_supported = function() {
-    /* Test via a getter in the options object to see if the passive
-     * property is accessed */
     let rv = false;
     try {
+        /* Use a getter in the options object, to test whether the "passive"
+         * property is accessed */
         const opts = Object.defineProperty({}, 'passive', {
             get: function() {
                 rv = true;
             }
         });
-        window.addEventListener('test', null, opts);
+        window.addEventListener('idle-timer:test', null, opts);
         console.log('idle-timer: passive event listeners supported');
     } catch (e) {
         console.warn('idle-timer: passive event listeners not supported');
@@ -33,60 +33,57 @@ let passive_supported = function() {
 /** Idle timer */
 class IdleTimer {
     /** Constructor */
-    constructor(opts, element = document) {
-        console.log('idle-timer: constructor');
-        if ('number' === typeof opts) {
-            opts = { timeout: opts };
-        }
-
-        /* Assemble options */
-        const default_opts = {
-            idle: false, /* Is the timer initially idle? */
-            timeout: 30000, /* Duration (ms) before user considered idle */
-            events: [
+    constructor(
+        {
+            element = document, /* The element to be monitored for activity */
+            initially_idle = false, /* Is the timer initially idle? */
+            timeout = 30000, /* Duration (ms) before user considered idle */
+            events = [
                 'mousemove',
                 'keydown',
                 'wheel',
                 'DOMMouseScroll',
                 'mousewheel',
                 'mousedown'
-            ] /* Array of monitored events */
-        };
-        opts = Object.assign(default_opts, opts);
+            ], /* Array of monitored events */
+            storage_key = null /* localStorage key to use for synchronising this timer between browser tabs/windows */
+        } = {}
+    ) {
+        console.log('idle-timer: constructor');
 
         /* Initialise member variables */
-        this.element = element; /* The element to be monitored for activity */
-        this.events = opts.events; /* Array of monitored events */
-        this.initially_idle = opts.idle; /* Is the timer initially idle? */
-        this.timeout = opts.timeout; /* The interval to change state */
-        this.timerSyncId = opts.timerSyncId; /* localStorage key to use for syncing this timer across browser tabs/windows */
+        Object.assign(this, {
+            element,
+            initially_idle,
+            timeout,
+            events,
+            storage_key
+        });
+
         this.timeout_id = null; /* setTimeout handle */
         this.pageX = null; /* Cached mouse event coordinate */
         this.pageY = null; /* Cached mouse event coordinate */
 
-        this.__installHandlers();
+        this.__install_handlers();
 
         this.reset();
     }
 
-    /**
-     * Stops the idle timer. This removes appropriate event handlers
-     * and cancels any pending timeouts
-     */
+    /** Stop the timer: remove event handlers and cancel pending timeout */
     destroy() {
         console.log('idle-timer: destroy');
-        /* Clear any pending timeouts */
+        /* Clear any pending timeout */
         this.__clear();
 
-        this.__uninstallHandlers();
+        this.__uninstall_handlers();
 
         return this;
     }
 
     /** Install event handlers */
-    __installHandlers() {
+    __install_handlers() {
         // console.log('idle-timer: install handlers');
-        const handler = (e) => { this.__handleEvent(e) }
+        const handler = (e) => { this.__handle_event(e) }
         this.events.forEach((item) => {
             this.element.addEventListener(
                 item,
@@ -95,7 +92,7 @@ class IdleTimer {
             )
         });
 
-        if (this.timerSyncId) {
+        if (this.storage_key) {
             window.addEventListener('storage', handler);
         }
 
@@ -103,14 +100,14 @@ class IdleTimer {
     }
 
     /* Uninstall event handlers */
-    __uninstallHandlers() {
+    __uninstall_handlers() {
         // console.log('idle-timer: uninstall handlers');
-        const handler = (e) => { this.__handleEvent(e) }
+        const handler = (e) => { this.__handle_event(e) }
         this.events.forEach((item) => {
             this.element.removeEventListener(item, handler);
         });
 
-        if (this.timerSyncId) {
+        if (this.storage_key) {
             window.removeEventListener('storage', handler);
         }
 
@@ -118,17 +115,17 @@ class IdleTimer {
     }
 
     /** Toggles the idle state and fires an appropriate event */
-    __toggleIdle(event = null) {
+    __toggle_idle(event = null) {
         // console.log('idle-timer: toggle idle state');
         /* Toggle state */
-        this.idle = !this.isIdle();
+        this.idle = !this.is_idle();
 
         /* Store toggle state timestamp */
         this.last_toggled_at = now();
 
         /* Dispatch a custom event, with state */
         const event_name =
-              'idle-timer:' + (this.isIdle() ? 'idle' : 'active');
+              'idle-timer:' + (this.is_idle() ? 'idle' : 'active');
         const custom_event =
               new CustomEvent(event_name,
                               {
@@ -141,14 +138,14 @@ class IdleTimer {
     }
 
     /** Handle an event indicating that the user isn't idle */
-    __handleEvent(event) {
+    __handle_event(event) {
         // console.log('idle-timer: handle event');
-        if (this.__isPaused()) {
+        if (this.__is_paused()) {
             /* Ignore events for now */
             return;
         }
 
-        if ('storage' === event.type && event.key !== this.timerSyncId) {
+        if ('storage' === event.type && event.key !== this.storage_key) {
             return;
         }
 
@@ -166,18 +163,18 @@ class IdleTimer {
                 /* Coordinates invalid: false alarm */
                 return;
             }
-            if (this.getElapsedTime() < 200) {
+            if (this.get_elapsed_time() < 200) {
                 /* Sub-200ms start-stop motion: false alarm */
                 return;
             }
         }
 
-        /* Clear any existing timeout */
+        /* Clear any pending timeout */
         this.__clear();
 
-        /* If the idle timer is enabled, flip */
-        if (this.isIdle()) {
-            this.__toggleIdle(event);
+        /* If the idle timer is enabled, toggle state */
+        if (this.is_idle()) {
+            this.__toggle_idle(event);
         }
 
         /* Store when user was last active */
@@ -187,11 +184,11 @@ class IdleTimer {
         this.pageX = event.pageX;
         this.pageY = event.pageY;
 
-        /* Sync last activity timestamp across browser tabs/windows */
-        if ('storage' !== event.type && this.timerSyncId) {
+        /* Synchronise last activity timestamp between browser tabs/windows */
+        if ('storage' !== event.type && this.storage_key) {
             if ('undefined' !== typeof localStorage) {
-                localStorage.setItem(this.timerSyncId,
-                                     this.getLastActiveTime());
+                localStorage.setItem(this.storage_key,
+                                     this.get_last_active_time());
             }
         }
 
@@ -205,7 +202,7 @@ class IdleTimer {
             duration = this.timeout;
         }
         this.timeout_id = setTimeout(
-            () => { this.__toggleIdle(null) },
+            () => { this.__toggle_idle(null) },
             duration
         );
         return this;
@@ -231,33 +228,33 @@ class IdleTimer {
 
         /* Reset timers */
         this.__clear();
-        if (!this.isIdle()) {
+        if (!this.is_idle()) {
             this.__start();
         }
 
         return this;
     }
 
-    /** Pause timer, and cache remaining time */
+    /** Pause timer, and cache remaining time until idle */
     pause() {
         console.log('idle-timer: pause');
-        if (!this.__isPaused()) {
+        if (!this.__is_paused()) {
             /* Calculate and cache remaining time */
-            this.remaining = this.timeout - this.getElapsedTime();
+            this.remaining = this.timeout - this.get_elapsed_time();
 
-            /* Clear any existing timeout */
+            /* Clear any pending timeout */
             this.__clear();
         }
 
         return this;
     }
 
-    /** Resume timer with cached remaining time */
+    /** Resume timer with cached remaining time until idle */
     resume() {
         console.log('idle-timer: resume');
-        if (this.__isPaused()) {
+        if (this.__is_paused()) {
             /* Start timer */
-            if (!this.isIdle()) {
+            if (!this.is_idle()) {
                 this.__start(this.remaining);
             }
 
@@ -268,35 +265,35 @@ class IdleTimer {
         return this;
     }
 
-    __isPaused() {
+    __is_paused() {
         return null != this.remaining;
     }
 
-    /** Get the time until becoming idle */
-    getRemainingTime() {
-        if (this.isIdle()) {
+    /** Get the time remaining until becoming idle */
+    get_remaining_time() {
+        if (this.is_idle()) {
             /* Already idle: no time remaining */
             return 0;
         }
 
-        if (this.__isPaused()) {
+        if (this.__is_paused()) {
             /* Use the cached remaining time */
             return this.remaining;
         }
 
-        /* Calculate remaining; if negative, state didn't finish flipping */
-        return Math.max(0, this.timeout - (now() - this.getLastActiveTime()));
+        /* Calculate remaining; if negative, state didn't finish toggling */
+        return Math.max(0, this.timeout - (now() - this.get_last_active_time()));
     }
 
-    getElapsedTime() {
+    get_elapsed_time() {
         return now() - this.last_toggled_at;
     }
 
-    getLastActiveTime() {
+    get_last_active_time() {
         return this.last_activity_at;
     }
 
-    isIdle() {
+    is_idle() {
         return this.idle;
     }
 }
