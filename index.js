@@ -1,11 +1,4 @@
-/*!
- * Copyright 2015-2017 ShrinkHub. All rights reserved.
- *
- * Redistribution and use in source or binary form, with or without
- * modification, is not permitted without written permission from ShrinkHub.
- *
- * https://www.shrinkhub.com
- */
+/*! Copyright (c) 2017 Simon Dawson */
 
 /** N.B. Public API in use:
  *
