@@ -8,27 +8,7 @@
  * - 'idle' event
  */
 
-/* Get current timestamp */
-let now = () => +new Date();
-
-/* Is the passive property supported? */
-let passive_supported = function() {
-    let rv = false;
-    try {
-        /* Use a getter in the options object, to test whether the "passive"
-         * property is accessed */
-        const opts = Object.defineProperty({}, 'passive', {
-            get: function() {
-                rv = true;
-            }
-        });
-        window.addEventListener('idle-timer:test', null, opts);
-        console.log('idle-timer: passive event listeners supported');
-    } catch (e) {
-        console.warn('idle-timer: passive event listeners not supported');
-    }
-    return rv;
-};
+import * as Utils from 'utils';
 
 /** Idle timer */
 class IdleTimer {
@@ -88,7 +68,7 @@ class IdleTimer {
             this.element.addEventListener(
                 item,
                 handler,
-                passive_supported() ? { passive: true } : false
+                Utils.passive_supported() ? { passive: true } : false
             )
         });
 
@@ -121,7 +101,7 @@ class IdleTimer {
         this.idle = !this.is_idle();
 
         /* Store toggle state timestamp */
-        this.last_toggled_at = now();
+        this.last_toggled_at = Utils.now();
 
         /* Dispatch a custom event, with state */
         const event_name =
@@ -178,7 +158,7 @@ class IdleTimer {
         }
 
         /* Store when user was last active */
-        this.last_activity_at = now();
+        this.last_activity_at = Utils.now();
 
         /* Update mouse coordinates */
         this.pageX = event.pageX;
@@ -223,7 +203,7 @@ class IdleTimer {
 
         /* Reset settings */
         this.idle = this.initially_idle;
-        this.last_activity_at = this.last_toggled_at = now();
+        this.last_activity_at = this.last_toggled_at = Utils.now();
         this.remaining = null;
 
         /* Reset timers */
@@ -282,11 +262,11 @@ class IdleTimer {
         }
 
         /* Calculate remaining; if negative, state didn't finish toggling */
-        return Math.max(0, this.timeout - (now() - this.get_last_active_time()));
+        return Math.max(0, this.timeout - (Utils.now() - this.get_last_active_time()));
     }
 
     get_elapsed_time() {
-        return now() - this.last_toggled_at;
+        return Utils.now() - this.last_toggled_at;
     }
 
     get_last_active_time() {
