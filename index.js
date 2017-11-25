@@ -8,7 +8,7 @@
  * - 'idle' event
  */
 
-import * as Utils from 'utils';
+import * as Utils from './utils';
 
 /** Idle timer */
 class IdleTimer {
