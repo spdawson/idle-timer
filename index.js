@@ -1,4 +1,4 @@
-/*! Copyright (c) 2017 Simon Dawson */
+/*! Copyright (c) 2017-2018 Simon Dawson */
 
 /** N.B. Public API in use:
  *

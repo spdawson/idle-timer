@@ -1,7 +1,9 @@
-/*! Copyright (c) 2017 Simon Dawson */
+/*! Copyright (c) 2017-2018 Simon Dawson */
 
 /* Get current timestamp */
-let now = () => +new Date();
+let now = function() {
+    return +new Date();
+};
 
 /* Is the passive property supported? */
 let passive_supported = function() {
