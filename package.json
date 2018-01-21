@@ -1,8 +1,8 @@
 {
   "name": "idle-timer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A timer to detect lapses in browser activity",
-  "main": "index.es6",
+  "main": "index.js",
   "repository": "https://bitbucket.org/spdawson/idle-timer",
   "author": "Simon Dawson",
   "license": "MIT",
