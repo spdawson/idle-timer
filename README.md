@@ -18,7 +18,7 @@ on which the idle timer has been registered.
 ## Usage
 
 ```js
-import { IdleTimer } from 'idle-timer';
+import IdleTimer from 'idle-timer';
 
 let handle_idle_timer_event = function(event) {
     const detail = event.detail;
